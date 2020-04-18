@@ -1,0 +1,91 @@
+#!/sbin/sh
+
+ZIPFILE=$3
+ZIPNAME=${ZIPFILE##*/}
+OUTFD=$2
+
+scr_wdth=50
+
+# Detect real $OUTFD
+#
+if readlink /proc/$$/fd/$OUTFD 2>/dev/null | grep /tmp >/dev/null; then
+  OUTFD=0
+  for FD in $( ls /proc/$$/fd ); do
+    if readlink /proc/$$/fd/$FD 2>/dev/null | grep pipe >/dev/null; then
+      if ps | grep " 3 $FD " | grep -v grep >/dev/null; then
+	OUTFD=$FD
+	break
+      fi
+    fi
+  done
+fi
+
+ui_print() {
+  echo -ne "ui_print $1\n" >> /proc/self/fd/$OUTFD
+  echo -ne "ui_print\n" >> /proc/self/fd/$OUTFD
+}
+
+print_full_bar() {
+  ui_print "$(printf '%*s\n' $scr_wdth | tr ' ' '=')"
+}
+
+print_justified() {
+  local str="$1"
+  local str_len=${#str}
+  local padding_len=$(( ($scr_wdth - $str_len - 2) / 2))
+  local ljust="$(printf '%*s' $padding_len)"
+  local rjust="$(printf '%*s' $(($padding_len + $str_len % 2)))"
+
+  ui_print "=$ljust$str$rjust="
+}
+
+
+ui_print " "
+print_full_bar
+print_justified "Back to the Future"
+print_justified "OS Patch level changer v1.0"
+print_justified "of boot and recovery partitions"
+print_justified "for Samsung S10/Note10 devices."
+print_justified "https://github.com/CruelKernel/"
+print_full_bar
+ui_print " "
+
+bl=$(getprop ro.boot.bootloader)
+
+# Device is first 5 characters of bootloader string.
+#
+device=${bl:0:$((${#bl} - 8))}
+
+if echo $device | grep -Ev 'G97([035][FN0]|7[BN])|N97([05][FN0]|6[BN0]|1N)' >/dev/null; then
+  ui_print " - Unsupported device detected. Installation aborted."
+  ui_print " "
+  exit 1
+fi
+
+date="$(echo $ZIPNAME | sed 's/^.*-\(2[0-9]\{3\}-[01][0-9]\).zip$/\1/')"
+
+if [ "$date" = "$ZIPNAME" ]; then
+	date="2127-12"
+	ui_print " - Can't determine os_patch_level date"
+	ui_print " - from filename '$ZIPNAME'."
+	ui_print " - Max possible date $date will be used."
+else
+	ui_print " - Detected date from zip filename: $date."
+fi
+
+unzip -d /tmp -o $ZIPFILE change_os_version
+chmod +x /tmp/change_os_version
+
+ui_print " - Patching boot ..."
+/tmp/change_os_version /dev/block/by-name/boot same $date 2>&1 |
+	sed 's/^\(.*\)$/ui_print  - - \1\n/' >> /proc/self/fd/$OUTFD
+ui_print " "
+ui_print " - Patching recovery ..."
+/tmp/change_os_version /dev/block/by-name/recovery same $date 2>&1 |
+	sed 's/^\(.*\)$/ui_print  - - \1\n/' >> /proc/self/fd/$OUTFD
+
+rm -f /tmp/change_os_version
+
+ui_print " "
+ui_print " - Finished."
+ui_print " "
