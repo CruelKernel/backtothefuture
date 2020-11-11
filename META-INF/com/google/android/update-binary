@@ -4,7 +4,7 @@ ZIPFILE=$3
 ZIPNAME=${ZIPFILE##*/}
 OUTFD=$2
 
-scr_wdth=50
+screen_width=50
 
 # Detect real $OUTFD
 #
@@ -26,13 +26,13 @@ ui_print() {
 }
 
 print_full_bar() {
-  ui_print "$(printf '%*s\n' $scr_wdth | tr ' ' '=')"
+  ui_print "$(printf '%*s\n' $screen_width | tr ' ' '=')"
 }
 
 print_justified() {
   local str="$1"
   local str_len=${#str}
-  local padding_len=$(( ($scr_wdth - $str_len - 2) / 2))
+  local padding_len=$(( ($screen_width - $str_len - 2) / 2))
   local ljust="$(printf '%*s' $padding_len)"
   local rjust="$(printf '%*s' $(($padding_len + $str_len % 2)))"
 
@@ -43,7 +43,7 @@ print_justified() {
 ui_print " "
 print_full_bar
 print_justified "Back to the Future"
-print_justified "OS Patch level changer v1.0"
+print_justified "OS Patch level changer v1.1"
 print_justified "of boot and recovery partitions"
 print_justified "for Samsung S10/Note10 devices."
 print_justified "https://github.com/CruelKernel/"
