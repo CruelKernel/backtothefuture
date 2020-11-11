@@ -150,7 +150,7 @@ static uint8_t *mmap_boot_image(const char *file, int flags)
 	addr = mmap(NULL, BOOT_IMAGE_HEADER_V2_SIZE, mmap_flags,
 		    MAP_SHARED, fd, 0);
 	check(addr == MAP_FAILED, "mmap %s failed", file);
-	check(close(fd) < 0, "close %s failed", file);
+	close(fd);
 
 	checkx(strncmp((const char *)addr, "ANDROID!", 8),
 	       "%s has incorrect magic number, not an android boot image",
@@ -274,7 +274,7 @@ int main(int argc, char *argv[])
 		printf("The dates are the same. Nothing to be done.\n");
 	}
 
-	check(munmap(addr, BOOT_IMAGE_HEADER_V2_SIZE) < 0, "munmap failed");
+	munmap(addr, BOOT_IMAGE_HEADER_V2_SIZE);
 
 	return 0;
 }
