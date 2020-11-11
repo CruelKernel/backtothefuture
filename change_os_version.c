@@ -41,10 +41,10 @@ typedef union __attribute__((packed)) {
 	};
 } os_version_t;
 
-static void check_error(bool print_errno, bool cond, const char *message, ...)
+static bool check_error(bool print_errno, bool cond, const char *message, ...)
 {
 	if (!cond)
-		return;
+		return false;
 
 	va_list args;
 	va_start(args, message);
@@ -54,22 +54,25 @@ static void check_error(bool print_errno, bool cond, const char *message, ...)
 		fprintf(stderr, ": %s", strerror(errno));
 	fprintf(stderr, "\n");
 	exit(EXIT_FAILURE);
+
+	return true;
 }
 
 #define checkx(cond, ...) check_error(false, cond, __VA_ARGS__)
 #define check(cond, ...) check_error(true, cond, __VA_ARGS__)
 
-static void warn_on(bool cond, const char *message, ...)
+static bool warn_on(bool cond, const char *message, ...)
 {
 	if (!cond)
-		return;
+		return false;
 
 	va_list args;
 	va_start(args, message);
 	vfprintf(stderr, message, args);
 	va_end(args);
 	fprintf(stderr, "\n");
-	return;
+
+	return true;
 }
 
 static inline uint32_t get_header_version(uint8_t *addr)
