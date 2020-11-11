@@ -41,7 +41,7 @@ typedef union __attribute__((packed)) {
 	};
 } os_version_t;
 
-static bool check_error(bool print_errno, bool cond, const char *message, ...)
+static bool stop_on(bool print_errno, bool cond, const char *message, ...)
 {
 	if (!cond)
 		return false;
@@ -58,10 +58,10 @@ static bool check_error(bool print_errno, bool cond, const char *message, ...)
 	return true;
 }
 
-#define checkx(cond, ...) check_error(false, cond, __VA_ARGS__)
-#define check(cond, ...) check_error(true, cond, __VA_ARGS__)
+#define stopx(cond, ...) stop_on(false, cond, __VA_ARGS__)
+#define stop(cond, ...) stop_on(true, cond, __VA_ARGS__)
 
-static bool warn_on(bool cond, const char *message, ...)
+static bool check_cond(bool print_errno, bool cond, const char *message, ...)
 {
 	if (!cond)
 		return false;
@@ -70,10 +70,16 @@ static bool warn_on(bool cond, const char *message, ...)
 	va_start(args, message);
 	vfprintf(stderr, message, args);
 	va_end(args);
+	if (print_errno)
+		fprintf(stderr, ": %s", strerror(errno));
 	fprintf(stderr, "\n");
 
 	return true;
 }
+
+#define checkx(cond, ...) check_cond(false, cond, __VA_ARGS__)
+#define check(cond, ...) check_cond(true, cond, __VA_ARGS__)
+
 
 static inline uint32_t get_header_version(uint8_t *addr)
 {
@@ -129,38 +135,38 @@ static uint8_t *mmap_boot_image(const char *file, int flags)
 	size_t block_size;
 
 	int fd = open(file, flags);
-	check(fd < 0, "open %s failed", file);
+	stop(fd < 0, "open %s failed", file);
 
 	if (flags == O_RDWR)
 		mmap_flags |= PROT_WRITE;
 
-	check(fstat(fd, &st) < 0, "stat %s failed", file);
-	checkx(!(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode)) &&
-	       st.st_size < BOOT_IMAGE_HEADER_V2_SIZE,
-	       "%s is too small", file);
-	checkx(S_ISCHR(st.st_mode), "%s is not a block device", file);
+	stop(fstat(fd, &st) < 0, "stat %s failed", file);
+	stopx(!(S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode)) &&
+	      st.st_size < BOOT_IMAGE_HEADER_V2_SIZE,
+	      "%s is too small", file);
+	stopx(S_ISCHR(st.st_mode), "%s is not a block device", file);
 
 	if (S_ISBLK(st.st_mode)) {
-		check(ioctl(fd, BLKGETSIZE64, &block_size) < 0,
-		      "%s can't determine block device size", file);
-		checkx(block_size < BOOT_IMAGE_HEADER_V2_SIZE,
-		       "%s is too small", file);
+		stop(ioctl(fd, BLKGETSIZE64, &block_size) < 0,
+		     "%s can't determine block device size", file);
+		stopx(block_size < BOOT_IMAGE_HEADER_V2_SIZE,
+		      "%s is too small", file);
 	}
 
 	addr = mmap(NULL, BOOT_IMAGE_HEADER_V2_SIZE, mmap_flags,
 		    MAP_SHARED, fd, 0);
-	check(addr == MAP_FAILED, "mmap %s failed", file);
+	stop(addr == MAP_FAILED, "mmap %s failed", file);
 	close(fd);
 
-	checkx(strncmp((const char *)addr, "ANDROID!", 8),
-	       "%s has incorrect magic number, not an android boot image",
-		file
+	stopx(strncmp((const char *)addr, "ANDROID!", 8),
+	      "%s has incorrect magic number, not an android boot image",
+	      file
 	);
 
 	header_version = get_header_version(addr);
-	checkx(header_version > 3,
-	       "%s unsupported header version (%u)",
-	       file, header_version
+	stopx(header_version > 3,
+	      "%s unsupported header version (%u)",
+	      file, header_version
 	);
 
 	return addr;
@@ -177,9 +183,9 @@ int main(int argc, char *argv[])
 	bool preserve_os_version = false;
 	bool preserve_os_patch_level = false;
 
-	checkx(argc != 4,
-	       "Usage: %s <file> <os_version|same> <os_patch_level|same>",
-	       argv[0]);
+	stopx(argc != 4,
+	      "Usage: %s <file> <os_version|same> <os_patch_level|same>",
+	      argv[0]);
 
 	file = argv[1];
 	os_version = argv[2];
@@ -190,45 +196,45 @@ int main(int argc, char *argv[])
 	} else {
 		// Format: a.b.c
 		for (const char *p = os_version; *p != '\0'; ++p) {
-			checkx(!(isdigit(*p) || *p == '.'),
-			       "Incorrect os_version '%s'. Format: a.b.c",
-			       os_version);
+			stopx(!(isdigit(*p) || *p == '.'),
+			      "Incorrect os_version '%s'. Format: a.b.c",
+			      os_version);
 		}
 		a = strtol(os_version, &delim, 10);
-		checkx(*delim != '.',
-		       "Incorrect os_version '%s'. Format: a.b.c", os_version);
+		stopx(*delim != '.',
+		      "Incorrect os_version '%s'. Format: a.b.c", os_version);
 		b = strtol(delim + 1, &delim, 10);
-		checkx(*delim != '.',
-		       "Incorrect os_version '%s'. Format: a.b.c", os_version);
+		stopx(*delim != '.',
+		      "Incorrect os_version '%s'. Format: a.b.c", os_version);
 		c = strtol(delim + 1, NULL, 10);
-		checkx(!(0 <= a && a <= 127 &&
+		stopx(!(0 <= a && a <= 127 &&
 			0 <= b && b <= 127 &&
 			0 <= c && c <= 127),
-		       "Incorrect os_version '%s'. Format: a.b.c", os_version);
+		      "Incorrect os_version '%s'. Format: a.b.c", os_version);
 	}
 
 	if (!strcmp(os_patch_level, "same")) {
 		preserve_os_patch_level = true;
 	} else {
 		// Format: YYYY-MM
-		checkx(strlen(os_patch_level) != 7 ||
-		       os_patch_level[4] != '-'    ||
-		       !isdigit(os_patch_level[0]) ||
-		       !isdigit(os_patch_level[1]) ||
-		       !isdigit(os_patch_level[2]) ||
-		       !isdigit(os_patch_level[3]) ||
-		       !isdigit(os_patch_level[5]) ||
-		       !isdigit(os_patch_level[6]),
-		       "Incorrent os_patch_level '%s'. Format: YYYY-MM",
-		       os_patch_level);
+		stopx(strlen(os_patch_level) != 7 ||
+		      os_patch_level[4] != '-'    ||
+		      !isdigit(os_patch_level[0]) ||
+		      !isdigit(os_patch_level[1]) ||
+		      !isdigit(os_patch_level[2]) ||
+		      !isdigit(os_patch_level[3]) ||
+		      !isdigit(os_patch_level[5]) ||
+		      !isdigit(os_patch_level[6]),
+		      "Incorrent os_patch_level '%s'. Format: YYYY-MM",
+		      os_patch_level);
 
 		year  = atoi(os_patch_level);
 		month = atoi(os_patch_level + 5);
 
-		checkx(!(2000 <= year && year <= 2127),
-			"Incorrect year: %ld (2000 <= year <= 2127)", year);
-		checkx(!(1 <= month && month <= 12),
-			"Incorrect month: %ld (01 <= month <= 12)", month);
+		stopx(!(2000 <= year && year <= 2127),
+		      "Incorrect year: %ld (2000 <= year <= 2127)", year);
+		stopx(!(1 <= month && month <= 12),
+		      "Incorrect month: %ld (01 <= month <= 12)", month);
 	}
 
 	addr = mmap_boot_image(file, O_RDWR);
@@ -258,12 +264,12 @@ int main(int argc, char *argv[])
 			newv.a, newv.b, newv.c,
 			newv.year + 2000, newv.month);
 
-		warn_on(curv.os_version > newv.os_version,
-			"warn: new os_version is lower than current"
+		checkx(curv.os_version > newv.os_version,
+		       "warn: new os_version is lower than current"
 		);
 
-		warn_on(curv.os_patch_level > newv.os_patch_level,
-			"warn: new os_patch_level version is lower than current"
+		checkx(curv.os_patch_level > newv.os_patch_level,
+		       "warn: new os_patch_level version is lower than current"
 		);
 
 		set_os_version(addr, newv);
